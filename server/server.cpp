@@ -1,12 +1,4 @@
-// Servidor: espera a los 3 clientes, promedia sus 4 matrices y les devuelve las medias.
-// Uso: ./server <puerto>
-// No sabe nada del entrenamiento: atiende rondas sin fin hasta Ctrl+C.
-//
-// Protocolo (cabecera de texto, 18 caracteres) + payload binario:
-//   TYPE(1) CLIENT_ID(1) ROWS(4) COLS(4) PAYLOAD_LEN(8) | PAYLOAD
-//   M: cliente -> servidor, matriz de una capa (doubles crudos)
-//   A: servidor -> cliente, media de una capa (doubles crudos)
-//   E: servidor -> cliente, texto con el codigo de error
+
 
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -25,7 +17,6 @@
 #define NUM_CLIENTES 3
 #define NUM_CAPAS 4
 
-// Una matriz: dimensiones + valores fila por fila
 struct Matriz {
     int rows, cols;
     std::vector<double> data;
@@ -69,8 +60,7 @@ int leerCampo(int S, int size) {
     return atoi(buff);
 }
 
-// Lee los 4 mensajes M de un cliente. Devuelve su CLIENT_ID.
-// Si algo esta mal lanza una excepcion cuyo texto es el codigo de error.
+
 int leer_matrices(int S, std::vector<Matriz> &capas) {
     int id = 0;
     for (int capa = 0; capa < NUM_CAPAS; capa++) {
@@ -101,9 +91,8 @@ int leer_matrices(int S, std::vector<Matriz> &capas) {
     return id;
 }
 
-// Media elemento por elemento: Media_k[i][j] = (C1_k[i][j] + C2_k[i][j] + C3_k[i][j]) / 3
 std::vector<Matriz> calcular_medias(const std::vector<std::vector<Matriz>> &recibidas) {
-    std::vector<Matriz> medias = recibidas[0];   // copia para tener las dimensiones
+    std::vector<Matriz> medias = recibidas[0]; 
     for (int k = 0; k < NUM_CAPAS; k++) {
         for (size_t i = 0; i < medias[k].data.size(); i++) {
             double suma = 0;
@@ -115,7 +104,6 @@ std::vector<Matriz> calcular_medias(const std::vector<std::vector<Matriz>> &reci
     return medias;
 }
 
-// Envia las 4 medias como 4 mensajes A
 void enviar_medias(int S, int client_id, const std::vector<Matriz> &medias) {
     for (const Matriz &M : medias) {
         int bytes = M.rows * M.cols * (int)sizeof(double);
@@ -138,7 +126,6 @@ int main(int argc, char *argv[]) {
     }
     int port   = atoi(argv[1]);
 
-    // Cada mensaje del log se escribe al instante (aunque se redirija a un archivo y se cierre con Ctrl+C)
     std::cout << std::unitbuf;
 
     // Si un cliente se cae antes de recibir su respuesta, write() no debe matar al servidor
@@ -158,7 +145,7 @@ int main(int argc, char *argv[]) {
     memset(&stSockAddr, 0, sizeof(stSockAddr));
     stSockAddr.sin_family = AF_INET;
     stSockAddr.sin_port = htons(port);
-    stSockAddr.sin_addr.s_addr = INADDR_ANY;   // escucha en todas las interfaces (necesario para 3 PCs)
+    stSockAddr.sin_addr.s_addr = INADDR_ANY;   
 
     if (::bind(ServerSocket, (const struct sockaddr *)&stSockAddr, sizeof(stSockAddr)) == -1) {
         perror("error bind failed");
@@ -172,17 +159,15 @@ int main(int argc, char *argv[]) {
     }
     std::cout << "Servidor escuchando en el puerto " << port << " (Ctrl+C para terminar)\n";
 
-    // ronda solo sirve para el log; no controla nada
     for (int ronda = 1; ; ronda++) {
-        // Indexados por CLIENT_ID - 1
+
         std::vector<std::vector<Matriz>> recibidas(NUM_CLIENTES);
         int sockets[NUM_CLIENTES] = {-1, -1, -1};
         int contador = 0;
-        int primero = -1;   // indice del primer cliente que llego (referencia de formas)
+        int primero = -1;   
 
-        // ---- Barrera: no se sigue hasta tener las 4 matrices de los 3 clientes ----
         while (contador < NUM_CLIENTES) {
-            int ClientSocket = accept(ServerSocket, NULL, NULL);   // se bloquea hasta que alguien conecta
+            int ClientSocket = accept(ServerSocket, NULL, NULL);  
             if (ClientSocket < 0) {
                 perror("error accept failed");
                 continue;
@@ -192,9 +177,9 @@ int main(int argc, char *argv[]) {
                 std::vector<Matriz> capas;
                 int id = leer_matrices(ClientSocket, capas);
 
-                if (sockets[id - 1] != -1)              // ese cliente ya mando en esta ronda
+                if (sockets[id - 1] != -1)             
                     throw std::runtime_error("BAD_CLIENT");
-                if (primero != -1) {                    // misma forma que el primer cliente que llego
+                if (primero != -1) {                  
                     for (int k = 0; k < NUM_CAPAS; k++)
                         if (capas[k].rows != recibidas[primero][k].rows ||
                             capas[k].cols != recibidas[primero][k].cols)
@@ -204,7 +189,7 @@ int main(int argc, char *argv[]) {
                 }
 
                 recibidas[id - 1] = capas;
-                sockets[id - 1] = ClientSocket;         // queda abierto esperando su respuesta
+                sockets[id - 1] = ClientSocket;      
                 contador++;
                 std::cout << "[Ronda " << ronda << "] cliente " << id<< " envio sus matrices (" << contador << "/" << NUM_CLIENTES << ")\n";
             } catch (const std::exception &e) {
@@ -214,7 +199,6 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // ---- Los 3 llegaron: promediar y responder ----
         std::vector<Matriz> medias = calcular_medias(recibidas);
         for (int c = 0; c < NUM_CLIENTES; c++) {
             enviar_medias(sockets[c], c + 1, medias);
@@ -223,6 +207,6 @@ int main(int argc, char *argv[]) {
         std::cout << "[Ronda " << ronda << "] medias enviadas a los " << NUM_CLIENTES << " clientes\n";
     }
 
-    close(ServerSocket);   // no se alcanza: el servidor corre hasta Ctrl+C
+    close(ServerSocket); 
     return 0;
 }
