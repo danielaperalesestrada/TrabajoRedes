@@ -6,19 +6,23 @@ import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 from model import Red
 
-#import client_tcp
+AQUI = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(AQUI, "..", "client_tcp"))
+import tcp
 
-
-CLIENT_ID = 1 
-IP = "127.0.0.1"
-PORT = 45000
+# Uso: python train.py id ip port
+if len(sys.argv) < 2 or sys.argv[1] not in ("1", "2", "3"):
+    sys.exit("Uso: python train.py <id_cliente 1|2|3> [ip_servidor] [puerto]")
+CLIENT_ID = int(sys.argv[1])
+IP = sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1"
+PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 45000
 
 EPOCHS = 20
 BATCH_SIZE = 5
 LR = 0.001
 TEST_PER = 0.15
 
-ruta = "../data/data.csv"
+ruta = os.path.join(AQUI, "..", "data", "data.csv")  # funciona desde cualquier carpeta
 data = np.loadtxt(ruta, delimiter=",", skiprows=1, dtype=np.float32)
 
 np.random.default_rng(0).shuffle(data)
@@ -69,13 +73,13 @@ for epoch in range(1, EPOCHS + 1):
 
     # [C++] Intercambio con el servidor (una vez por epoca):
     # 1) sacar las 4 matrices como float64 para C++
-    # mats = [c.weight.detach().numpy().astype(np.float64) for c in capas]
+    mats = [c.weight.detach().numpy().astype(np.float64) for c in capas]
     # 2) abre socket, envia, espera las 4 medias, cierra socket
-    # medias = comm.trasladar_matrices(IP, PORT, CLIENT_ID, mats)
+    medias = tcp.trasladar_matrices(IP, PORT, CLIENT_ID, mats)
     # 3) reemplazar los pesos de la red por las medias
-    # with torch.no_grad():
-    #     for c, M in zip(capas, medias):
-    #         c.weight.copy_(torch.from_numpy(M))
+    with torch.no_grad():
+        for c, M in zip(capas, medias):
+            c.weight.copy_(torch.from_numpy(M))
 
     loss_tr, acc_tr = evaluar(X_mio, y_mio)
     print(f"[Cliente {CLIENT_ID}] Epoca {epoch:2d}/{EPOCHS}  loss={loss_tr:.4f}  acc={acc_tr:.4f}")
