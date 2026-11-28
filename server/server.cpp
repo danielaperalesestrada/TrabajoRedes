@@ -15,7 +15,7 @@
 #include <stdexcept>
 
 #define NUM_CLIENTES 3
-#define NUM_CAPAS 4
+#define NUM_CAPAS 5
 
 struct Matriz {
     int rows, cols;
@@ -48,8 +48,8 @@ std::string zeroPad(int number, int size) {
     return std::string(size - str.length(), '0') + str;
 }
 
-std::string armarCabecera(char type, int client_id, int rows, int cols, int payload_len) {
-    return std::string(1, type) + std::to_string(client_id) + zeroPad(rows, 4) + zeroPad(cols, 4) + zeroPad(payload_len, 8);
+std::string armarCabecera(char type, int rows, int cols, int payload_len) {
+    return std::string(1, type) + zeroPad(rows, 4) + zeroPad(cols, 4) + zeroPad(payload_len, 8);
 }
 
 int leerCampo(int S, int size) {
@@ -61,23 +61,22 @@ int leerCampo(int S, int size) {
 }
 
 
-int leer_matrices(int S, std::vector<Matriz> &capas) {
+void leer_matrices(int S, std::vector<Matriz> &capas) {
     int id = 0;
     for (int capa = 0; capa < NUM_CAPAS; capa++) {
         char type;
         if (readExact(S, &type, 1) <= 0)
             throw std::runtime_error("Conexion cerrada por el cliente");
 
-        int client_id= leerCampo(S, 1);
-        int rows  = leerCampo(S, 4);
+
+        
+            int rows  = leerCampo(S, 4);
         int cols = leerCampo(S, 4);
         int payload_len = leerCampo(S, 8);
 
         if (type != 'M' || payload_len != rows * cols * (int)sizeof(double))
             throw std::runtime_error("BAD_HEADER");
-        if (client_id < 1 || client_id > NUM_CLIENTES || (capa > 0 && client_id != id))
-            throw std::runtime_error("BAD_CLIENT");
-        id = client_id;
+
 
         Matriz M;
         M.rows = rows;
@@ -88,7 +87,7 @@ int leer_matrices(int S, std::vector<Matriz> &capas) {
 
         capas.push_back(M);
     }
-    return id;
+
 }
 
 std::vector<Matriz> calcular_medias(const std::vector<std::vector<Matriz>> &recibidas) {
@@ -104,17 +103,17 @@ std::vector<Matriz> calcular_medias(const std::vector<std::vector<Matriz>> &reci
     return medias;
 }
 
-void enviar_medias(int S, int client_id, const std::vector<Matriz> &medias) {
+void enviar_medias(int S, const std::vector<Matriz> &medias) {
     for (const Matriz &M : medias) {
         int bytes = M.rows * M.cols * (int)sizeof(double);
-        std::string cab = armarCabecera('A', client_id, M.rows, M.cols, bytes);
+        std::string cab = armarCabecera('A', M.rows, M.cols, bytes);
         writeExact(S, cab.c_str(), cab.size());
         writeExact(S, (const char *)M.data.data(), bytes);
     }
 }
 
 void enviar_error(int S, const std::string &codigo) {
-    std::string cab = armarCabecera('E', 0, 0, 0, (int)codigo.size());
+    std::string cab = armarCabecera('E', 0, 0, (int)codigo.size());
     writeExact(S, cab.c_str(), cab.size());
     writeExact(S, codigo.c_str(), codigo.size());
 }
@@ -164,7 +163,7 @@ int main(int argc, char *argv[]) {
         std::vector<std::vector<Matriz>> recibidas(NUM_CLIENTES);
         int sockets[NUM_CLIENTES] = {-1, -1, -1};
         int contador = 0;
-        int primero = -1;   
+           
 
         while (contador < NUM_CLIENTES) {
             int ClientSocket = accept(ServerSocket, NULL, NULL);  
@@ -175,23 +174,22 @@ int main(int argc, char *argv[]) {
 
             try {
                 std::vector<Matriz> capas;
-                int id = leer_matrices(ClientSocket, capas);
+                leer_matrices(ClientSocket, capas);
 
-                if (sockets[id - 1] != -1)             
-                    throw std::runtime_error("BAD_CLIENT");
-                if (primero != -1) {                  
-                    for (int k = 0; k < NUM_CAPAS; k++)
-                        if (capas[k].rows != recibidas[primero][k].rows ||
-                            capas[k].cols != recibidas[primero][k].cols)
+                if (contador > 0) {
+                    for (int k = 0; k < NUM_CAPAS; k++) {
+                        if (capas[k].rows != recibidas[0][k].rows ||
+                            capas[k].cols != recibidas[0][k].cols) {
                             throw std::runtime_error("BAD_SHAPE");
-                } else {
-                    primero = id - 1;
+                        }
+                    }
                 }
 
-                recibidas[id - 1] = capas;
-                sockets[id - 1] = ClientSocket;      
+
+                recibidas[contador ] = capas;
+                sockets[contador] = ClientSocket;      
                 contador++;
-                std::cout << "[Ronda " << ronda << "] cliente " << id<< " envio sus matrices (" << contador << "/" << NUM_CLIENTES << ")\n";
+                std::cout << "[Ronda " << ronda << "]"<< " envio sus matrices (" << contador << "/" << NUM_CLIENTES << ")\n";
             } catch (const std::exception &e) {
                 std::cout << "[Ronda " << ronda << "] conexion rechazada: " << e.what() << "\n";
                 enviar_error(ClientSocket, e.what());
@@ -201,7 +199,7 @@ int main(int argc, char *argv[]) {
 
         std::vector<Matriz> medias = calcular_medias(recibidas);
         for (int c = 0; c < NUM_CLIENTES; c++) {
-            enviar_medias(sockets[c], c + 1, medias);
+            enviar_medias(sockets[c], medias);
             close(sockets[c]);
         }
         std::cout << "[Ronda " << ronda << "] medias enviadas a los " << NUM_CLIENTES << " clientes\n";

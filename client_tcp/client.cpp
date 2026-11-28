@@ -53,11 +53,11 @@ std::string zeroPad(int number, int size)
 
 
 
-std::string armarCabecera(char type, int client_id, int rows, int cols, int payload_len){
-    return std::string(1, type) + std::to_string(client_id)+ zeroPad(rows, 4)+ zeroPad(cols, 4)+ zeroPad(payload_len, 8);
+std::string armarCabecera(char type, int rows, int cols, int payload_len){
+    return std::string(1, type) + zeroPad(rows, 4)+ zeroPad(cols, 4)+ zeroPad(payload_len, 8);
 }
 
-bool Write(int S, const std::vector<py::array_t<double>> &matrices, int client_id){
+bool Write(int S, const std::vector<py::array_t<double>> &matrices){
     for (const auto &m : matrices){
 
         py::array_t<double, py::array::c_style | py::array::forcecast> M(m); // necesario para pasar de numpy python a numpy c++
@@ -66,7 +66,7 @@ bool Write(int S, const std::vector<py::array_t<double>> &matrices, int client_i
         int cols = (int)M.shape(1);
         int bytes = rows * cols * (int)sizeof(double);
 
-        std::string cab = armarCabecera('M', client_id, rows, cols, bytes);
+        std::string cab = armarCabecera('M', rows, cols, bytes);
         if (writeExact(S, cab.c_str(), cab.size()) <= 0) return false;
 
         if (writeExact(S, (const char *)M.data(), bytes) <= 0) return false;
@@ -85,12 +85,12 @@ int leerCampo(int S, int size){
 std::vector<py::array_t<double>> leer_medias(int S){
     std::vector<py::array_t<double>> medias;
 
-    for (int capa = 0; capa < 4; capa++){
+    for (int capa = 0; capa < 5 ; capa++){
         char type;
         if (readExact(S, &type, 1) <= 0)
             throw std::runtime_error("Conexion cerrada por el servidor");
 
-        int client_id  = leerCampo(S, 1);
+        
         int rows = leerCampo(S, 4);
         int cols  = leerCampo(S, 4);
         int payload_len = leerCampo(S, 8);
@@ -118,7 +118,7 @@ std::vector<py::array_t<double>> leer_medias(int S){
 }
 
 
-std::vector<py::array_t<double>> trasladar_matrices(std::string ip, int port, int client_id, std::vector<py::array_t<double>> matrices)
+std::vector<py::array_t<double>> trasladar_matrices(std::string ip, int port, std::vector<py::array_t<double>> matrices)
 {
     
     struct sockaddr_in stSockAddr;
@@ -142,7 +142,7 @@ std::vector<py::array_t<double>> trasladar_matrices(std::string ip, int port, in
     }
 
     try{
-        if (!Write(SocketFD, matrices, client_id))
+        if (!Write(SocketFD, matrices))
             throw std::runtime_error("Fallo al enviar las matrices");
 
         std::vector<py::array_t<double>> medias = leer_medias(SocketFD);

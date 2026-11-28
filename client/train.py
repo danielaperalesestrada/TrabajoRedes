@@ -17,8 +17,8 @@ CLIENT_ID = int(sys.argv[1])
 IP = sys.argv[2] if len(sys.argv) > 2 else "127.0.0.1"
 PORT = int(sys.argv[3]) if len(sys.argv) > 3 else 45000
 
-EPOCHS = 20
-BATCH_SIZE = 5
+EPOCHS = 1
+BATCH_SIZE = 1
 LR = 0.001
 TEST_PER = 0.15
 
@@ -75,7 +75,7 @@ for epoch in range(1, EPOCHS + 1):
     # 1) sacar las 4 matrices como float64 para C++
     mats = [c.weight.detach().numpy().astype(np.float64) for c in capas]
     # 2) abre socket, envia, espera las 4 medias, cierra socket
-    medias = tcp.trasladar_matrices(IP, PORT, CLIENT_ID, mats)
+    medias = tcp.trasladar_matrices(IP, PORT, mats)
     # 3) reemplazar los pesos de la red por las medias
     with torch.no_grad():
         for c, M in zip(capas, medias):
